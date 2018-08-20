@@ -26,6 +26,9 @@
 #include <sensor_msgs/Image.h>
 #include <geometry_msgs/Point.h>
 #include <image_transport/image_transport.h>
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/exact_time.h>
 
 // OpenCv
 #include <opencv2/imgproc/imgproc.hpp>
@@ -95,11 +98,19 @@ class YoloObjectDetector
    */
   void init();
 
+  void callback(const sensor_msgs::ImageConstPtr& imageMsg, const sensor_msgs::ImageConstPtr& depthMsg);
+
   /*!
    * Callback of camera.
    * @param[in] msg image pointer.
    */
   void cameraCallback(const sensor_msgs::ImageConstPtr& msg);
+
+  /*!
+   * Callback of camera.
+   * @param[in] msg image pointer.
+   */
+  void depthCallback(const sensor_msgs::ImageConstPtr& msg);
 
   /*!
    * Check for objects action goal callback.
@@ -116,6 +127,8 @@ class YoloObjectDetector
    * @return false if preempt has been requested or inactive.
    */
   bool isCheckingForObjects() const;
+
+  bool isDetecting() const;
 
   /*!
    * Publishes the detection image.
@@ -145,6 +158,9 @@ class YoloObjectDetector
   ros::Publisher objectPublisher_;
   ros::Publisher boundingBoxesPublisher_;
 
+  int containTime_;
+  int delayTime_;
+
   //! Detected objects.
   std::vector<std::vector<RosBox_> > rosBoxes_;
   std::vector<int> rosBoxCounter_;
@@ -153,6 +169,9 @@ class YoloObjectDetector
   //! Camera related parameters.
   int frameWidth_;
   int frameHeight_;
+
+  //! action variable
+  std_msgs::String objName;
 
   //! Publisher of the bounding box image.
   ros::Publisher detectionImagePublisher_;
@@ -190,13 +209,20 @@ class YoloObjectDetector
   RosBox_ *roiBoxes_;
   bool viewImage_;
   bool enableConsoleOutput_;
+  bool testModel_;
+  bool alwaysDetect_;
   int waitKeyDelay_;
   int fullScreen_;
   char *demoPrefix_;
 
   std_msgs::Header imageHeader_;
   cv::Mat camImageCopy_;
+  cv::Mat depthImageCopy_;
   boost::shared_mutex mutexImageCallback_;
+  typedef message_filters::sync_policies::ExactTime<sensor_msgs::Image, sensor_msgs::Image> MySyncPolicy;
+  message_filters::Synchronizer<MySyncPolicy> *sync_;
+  message_filters::Subscriber<sensor_msgs::Image> *imageSub_;
+  message_filters::Subscriber<sensor_msgs::Image> *depthSub_;
 
   bool imageStatus_ = false;
   boost::shared_mutex mutexImageStatus_;
@@ -220,10 +246,6 @@ class YoloObjectDetector
   void *fetchInThread();
 
   void *displayInThread(void *ptr);
-
-  void *displayLoop(void *ptr);
-
-  void *detectLoop(void *ptr);
 
   void setupNetwork(char *cfgfile, char *weightfile, char *datafile, float thresh,
                     char **names, int classes,
